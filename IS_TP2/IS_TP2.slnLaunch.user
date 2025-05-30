@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Dois Juntos",
+    "Projects": [
+      {
+        "Path": "IS_TP2.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "..\\Consumer\\Consumer\\Receiver.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
