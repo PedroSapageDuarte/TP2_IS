@@ -1,0 +1,127 @@
+USE [Producao]
+GO
+
+/****** Object:  Trigger [dbo].[TRG_CalculateCustosPeca]    Script Date: 30/05/2025 09:56:05 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE TRIGGER [dbo].[TRG_CalculateCustosPeca]
+ON [dbo].[Testes]
+AFTER INSERT
+AS
+BEGIN
+    DECLARE @ID_Produto INT,
+            @Codigo_Peca CHAR(8),
+            @TempoProducao INT,
+            @resultadoTeste CHAR(2),
+            @tipo CHAR(2),
+            @custoProducao DECIMAL(10,2),
+            @valorVenda DECIMAL(10,2),
+            @prejuizo DECIMAL(10,2),
+            @lucro DECIMAL(10,2),
+            @custoFalha DECIMAL(10,2);
+            
+    -- Declaração de cursor para processar as peças inseridas. Ele percorre linha a linha
+	--o conjunto de resultados que foram inseridos na tabela atual (neste caso, Testes)
+    DECLARE ins_cursor CURSOR FOR
+    SELECT t.ID_Produto, t.Codigo_Resultado, p.Codigo_Peca, p.Tempo_Producao
+    FROM inserted t
+    JOIN Produto p ON t.ID_Produto = p.ID_Produto; --Une os registos recém-inseridos nesta tabela
+												--com os correspontes da tabela "Produto"
+
+    --Começa a leitura dos registos
+    OPEN ins_cursor;
+	--Pega no primeiro registo do cursor e armazena os valores nas variáveis declaradas
+    FETCH NEXT FROM ins_cursor INTO @ID_Produto, @resultadoTeste, @Codigo_Peca, @TempoProducao;
+    WHILE @@FETCH_STATUS = 0 --Continua enquanto houver registos a processar
+    BEGIN
+        --Obter o tipo de produto (os dois primeiros caracteres do Código_Peca)
+        SET @tipo = LEFT(@Codigo_Peca,2);
+        
+        --Cálculo do Custo de Produção e definição do Valor de Venda
+        IF @tipo = 'aa'
+        BEGIN
+            SET @custoProducao = @TempoProducao * 1.9;
+            SET @valorVenda = 120;
+            SET @prejuizo = @TempoProducao * 0.9; --base para aa
+        END
+        ELSE IF @tipo = 'ab'
+        BEGIN
+            SET @custoProducao = @TempoProducao * 1.3;
+            SET @valorVenda = 100;
+            SET @prejuizo = @TempoProducao * 1.1; --base para ab
+        END
+        ELSE IF @tipo = 'ba'
+        BEGIN
+            SET @custoProducao = @TempoProducao * 1.7;
+            SET @valorVenda = 110;
+            SET @prejuizo = @TempoProducao * 1.2; --base para ba
+        END
+        ELSE IF @tipo = 'bb'
+        BEGIN
+            SET @custoProducao = @TempoProducao * 1.2;
+            SET @valorVenda = 90;
+            SET @prejuizo = @TempoProducao * 1.3; --base para bb
+        END
+        ELSE
+        BEGIN
+            SET @custoProducao = 0;
+            SET @valorVenda = 0;
+            SET @prejuizo = 0;
+        END
+
+        --Determina o custo do tipo de falha com base no código do teste
+        IF @resultadoTeste = '01'
+            SET @custoFalha = 0;
+        ELSE IF @resultadoTeste = '02'
+            SET @custoFalha = 3;
+        ELSE IF @resultadoTeste = '03'
+            SET @custoFalha = 2;
+        ELSE IF @resultadoTeste = '04'
+            SET @custoFalha = 2.4;
+        ELSE IF @resultadoTeste = '05'
+            SET @custoFalha = 1.7;
+        ELSE IF @resultadoTeste = '06'
+            SET @custoFalha = 4.5;
+        ELSE
+            SET @custoFalha = 0;
+            
+        --Acrescenta o custo do tipo de falha ao prejuízo
+        SET @prejuizo = @prejuizo + @custoFalha;
+        
+        --Cálculo do lucro: valor de venda menos (custo de produção + prejuízo)
+        SET @lucro = @valorVenda - (@custoProducao + @prejuizo);
+        
+        --Comando SQL para inserir o registro na base de dados Contabilidade
+        DECLARE @sql NVARCHAR(MAX);
+        SET @sql = N'INSERT INTO Contabilidade.dbo.Custos_Peca (ID_Produto, Codigo_Peca, Tempo_Producao, Custo_Producao, Lucro, Prejuizo)
+                     VALUES (@ID_Produto, @Codigo_Peca, @TempoProducao, @CustoProducao, @Lucro, @Prejuizo);';
+        
+		--Executa o comando SQL
+        EXEC sp_executesql 
+            @sql,
+            N'@ID_Produto INT, @Codigo_Peca CHAR(8), @TempoProducao INT, @CustoProducao DECIMAL(10,2), @Lucro DECIMAL(10,2), @Prejuizo DECIMAL(10,2)',
+            @ID_Produto = @ID_Produto,
+            @Codigo_Peca = @Codigo_Peca,
+            @TempoProducao = @TempoProducao,
+            @CustoProducao = @custoProducao,
+            @Lucro = @lucro,
+            @Prejuizo = @prejuizo;
+            
+        FETCH NEXT FROM ins_cursor INTO @ID_Produto, @resultadoTeste, @Codigo_Peca, @TempoProducao; --Continua o loop para o próximo registo
+    END
+    
+	--Fechar o cursor e libertar recursos
+    CLOSE ins_cursor;
+    DEALLOCATE ins_cursor;
+END;
+GO
+
+ALTER TABLE [dbo].[Testes] ENABLE TRIGGER [TRG_CalculateCustosPeca]
+GO
+
+
